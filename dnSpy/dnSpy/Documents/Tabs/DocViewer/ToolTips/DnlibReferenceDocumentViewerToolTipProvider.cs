@@ -17,6 +17,7 @@
     along with dnSpy.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -55,35 +56,43 @@ namespace dnSpy.Documents.Tabs.DocViewer.ToolTips {
 
 		string? GetDocumentation(XmlDocumentationProvider docProvider, IMemberRef mr) {
 			var sb = new StringBuilder();
-			var doc = docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr, sb));
+			var doc = TryGetDocumentationForMember(docProvider, mr, sb);
 			if (doc is not null)
 				return doc;
 			var method = mr as IMethod;
 			if (method is null)
 				return null;
 			string name = method.Name;
-			if (name.StartsWith("set_") || name.StartsWith("get_")) {
+			if (name.StartsWith("set_", StringComparison.Ordinal) || name.StartsWith("get_", StringComparison.Ordinal)) {
 				var md = Resolve(method) as MethodDef;
 				if (md is null)
 					return null;
 				var mr2 = md.DeclaringType.Properties.FirstOrDefault(p => p.GetMethod == md || p.SetMethod == md);
-				return docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr2, sb));
+				return TryGetDocumentationForMember(docProvider, mr2, sb);
 			}
-			else if (name.StartsWith("add_")) {
+			else if (name.StartsWith("add_", StringComparison.Ordinal)) {
 				var md = Resolve(method) as MethodDef;
 				if (md is null)
 					return null;
 				var mr2 = md.DeclaringType.Events.FirstOrDefault(p => p.AddMethod == md);
-				return docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr2, sb));
+				return TryGetDocumentationForMember(docProvider, mr2, sb);
 			}
-			else if (name.StartsWith("remove_")) {
+			else if (name.StartsWith("remove_", StringComparison.Ordinal)) {
 				var md = Resolve(method) as MethodDef;
 				if (md is null)
 					return null;
 				var mr2 = md.DeclaringType.Events.FirstOrDefault(p => p.RemoveMethod == md);
-				return docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr2, sb));
+				return TryGetDocumentationForMember(docProvider, mr2, sb);
 			}
 			return null;
+		}
+
+		static string? TryGetDocumentationForMember(XmlDocumentationProvider docProvider, IMemberRef? mr, StringBuilder sb) {
+			var roslynLookupResult = docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr, sb));
+			if (roslynLookupResult is not null)
+				return roslynLookupResult;
+			// If the roslyn lookup failed, try the MSVC compiler lookup
+			return docProvider.GetDocumentation(XmlDocKeyProvider.GetKey(mr, sb, XmlDocCompiler.MSVC));
 		}
 
 		static IMemberRef? Resolve(IMemberRef mr) {
@@ -105,12 +114,12 @@ namespace dnSpy.Documents.Tabs.DocViewer.ToolTips {
 
 			provider.CreateNewOutput();
 			try {
-				var docProvider = XmlDocLoader.LoadDocumentation(gp.Module);
-				if (docProvider is not null) {
-					if (!provider.Output.WriteXmlDocGeneric(GetDocumentation(docProvider, gp.Owner), gp.Name) && gp.Owner is TypeDef) {
+				if (gp.Module is not null) {
+					var docProvider = XmlDocLoader.LoadDocumentation(gp.Module);
+					if (docProvider is not null && !provider.Output.WriteXmlDocGeneric(GetDocumentation(docProvider, gp.Owner), gp.Name) && gp.Owner is TypeDef def) {
 						// If there's no doc available, use the parent class' documentation if this
 						// is a generic type parameter (and not a generic method parameter).
-						var owner = ((TypeDef)gp.Owner).DeclaringType;
+						var owner = def.DeclaringType;
 						while (owner is not null) {
 							if (provider.Output.WriteXmlDocGeneric(GetDocumentation(docProvider, owner), gp.Name))
 								break;
@@ -140,7 +149,7 @@ namespace dnSpy.Documents.Tabs.DocViewer.ToolTips {
 			context.Decompiler.WriteToolTip(provider.Output, @ref, null);
 			provider.CreateNewOutput();
 			try {
-				if (resolvedRef is IMemberDef) {
+				if (resolvedRef is IMemberDef && resolvedRef.Module is not null) {
 					var docProvider = XmlDocLoader.LoadDocumentation(resolvedRef.Module);
 					if (docProvider is not null)
 						provider.Output.WriteXmlDoc(GetDocumentation(docProvider, resolvedRef));
@@ -168,9 +177,9 @@ namespace dnSpy.Documents.Tabs.DocViewer.ToolTips {
 			provider.CreateNewOutput();
 			var method = parameter.Parameter.Method;
 			try {
-				var docProvider = XmlDocLoader.LoadDocumentation(method.Module);
-				if (docProvider is not null) {
-					if (!provider.Output.WriteXmlDocParameter(GetDocumentation(docProvider, method), parameter.Name)) {
+				if (method.Module is not null) {
+					var docProvider = XmlDocLoader.LoadDocumentation(method.Module);
+					if (docProvider is not null && !provider.Output.WriteXmlDocParameter(GetDocumentation(docProvider, method), parameter.Name)) {
 						var owner = method.DeclaringType;
 						while (owner is not null) {
 							if (provider.Output.WriteXmlDocParameter(GetDocumentation(docProvider, owner), parameter.Name))

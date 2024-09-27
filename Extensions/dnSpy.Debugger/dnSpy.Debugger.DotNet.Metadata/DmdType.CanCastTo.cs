@@ -340,8 +340,8 @@ namespace dnSpy.Debugger.DotNet.Metadata {
 			case DDN.ElementType.Class:
 			case DDN.ElementType.Var:
 			case DDN.ElementType.Array:
-			case DDN.ElementType.GenericInst:
-			case DDN.ElementType.TypedByRef:	return AppDomain.Runtime.PointerSize;
+			case DDN.ElementType.GenericInst:	return AppDomain.Runtime.PointerSize;
+			case DDN.ElementType.TypedByRef:	return AppDomain.Runtime.PointerSize * 2;
 			case DDN.ElementType.ValueArray:	return -1;
 			case DDN.ElementType.I:
 			case DDN.ElementType.U:				return AppDomain.Runtime.PointerSize;
@@ -501,6 +501,12 @@ namespace dnSpy.Debugger.DotNet.Metadata {
 				return false;
 
 			// The original code used a list to check for infinite recursion, we'll use this code unless it throws too often
+#if NETCOREAPP
+			if (!RuntimeHelpers.TryEnsureSufficientExecutionStack()) {
+				Debug.Fail("Should probably not happen often");
+				return false;
+			}
+#else
 			try {
 				RuntimeHelpers.EnsureSufficientExecutionStack();
 			}
@@ -508,6 +514,7 @@ namespace dnSpy.Debugger.DotNet.Metadata {
 				Debug.Fail("Should probably not happen often");
 				return false;
 			}
+#endif
 
 			var inst = GetGenericArguments();
 			if (inst.Count > 0) {

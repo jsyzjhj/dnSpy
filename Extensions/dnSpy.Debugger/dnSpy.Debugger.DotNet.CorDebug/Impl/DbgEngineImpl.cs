@@ -29,6 +29,7 @@ using dndbg.COM.CorDebug;
 using dndbg.COM.MetaData;
 using dndbg.DotNet;
 using dndbg.Engine;
+using dnlib.DotNet;
 using dnSpy.Contracts.Debugger;
 using dnSpy.Contracts.Debugger.DotNet.Code;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
@@ -38,7 +39,6 @@ using dnSpy.Contracts.Debugger.DotNet.Metadata.Internal;
 using dnSpy.Contracts.Debugger.DotNet.Steppers.Engine;
 using dnSpy.Contracts.Debugger.Engine;
 using dnSpy.Contracts.Debugger.Engine.Steppers;
-using dnSpy.Contracts.Debugger.Evaluation;
 using dnSpy.Contracts.Debugger.Exceptions;
 using dnSpy.Contracts.Metadata;
 using dnSpy.Debugger.DotNet.CorDebug.CallStack;
@@ -185,31 +185,13 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 
 				module = TryGetModule(e2.CorFrame, e2.CorThread);
 				var exObj = e2.CorThread?.CurrentException;
-				var reflectionAppDomain = module?.GetReflectionModule()?.AppDomain;
-				DbgDotNetValueImpl? dnExObj = null;
-				try {
-					string? exName = null;
-					string? exMessage = null;
-					int? hResult = null;
-					if (exObj is not null) {
-						if (reflectionAppDomain is not null)
-							dnExObj = CreateDotNetValue_CorDebug(exObj, reflectionAppDomain, false) as DbgDotNetValueImpl;
-						if (dnExObj is not null) {
-							exName = TryGetExceptionName(dnExObj);
-							exMessage = TryGetExceptionMessage(dnExObj);
-							hResult = TryGetExceptionHResult(dnExObj);
-						}
 
-						exName ??= TryGetExceptionName(exObj);
-						exMessage ??= TryGetExceptionMessage(exObj);
-						hResult ??= TryGetExceptionHResult(exObj);
-					}
-					objectFactory.CreateException(new DbgExceptionId(PredefinedExceptionCategories.DotNet, exName ?? "???"), exFlags, exMessage ?? dnSpy_Debugger_DotNet_CorDebug_Resources.ExceptionMessageIsNull, hResult, TryGetThread(e2.CorThread), module, GetMessageFlags());
-					e.AddPauseReason(DebuggerPauseReason.Other);
-				}
-				finally {
-					dnExObj?.Dispose();
-				}
+				string? exName = TryGetExceptionName(exObj);
+				string? exMessage = TryGetExceptionMessage(exObj);
+				int? hResult = TryGetExceptionHResult(exObj);
+
+				objectFactory.CreateException(new DbgExceptionId(PredefinedExceptionCategories.DotNet, exName ?? "???"), exFlags, exMessage ?? dnSpy_Debugger_DotNet_CorDebug_Resources.ExceptionMessageIsNull, hResult, TryGetThread(e2.CorThread), module, GetMessageFlags());
+				e.AddPauseReason(DebuggerPauseReason.Other);
 				break;
 
 			case DebugCallbackKind.MDANotification:
@@ -268,7 +250,6 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 		internal void RaiseModulesRefreshed(DbgModule module) => dbgModuleMemoryRefreshedNotifier.RaiseModulesRefreshed(new[] { module });
 
 		internal DmdDynamicModuleHelperImpl GetDynamicModuleHelper(DnModule dnModule) {
-			Debug.Assert(dnModule.IsDynamic);
 			lock (lockObj) {
 				if (!toDynamicModuleHelper.TryGetValue(dnModule.CorModule, out var helper))
 					toDynamicModuleHelper.Add(dnModule.CorModule, helper = new DmdDynamicModuleHelperImpl(this));
@@ -283,7 +264,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			var mdi = exactType.GetMetaDataImport(out uint token);
 			var list = new List<string>(4);
 
-			while ((token & 0x00FFFFFF) != 0) {
+			while (MDToken.ToRID(token) != 0) {
 				var name = MDAPI.GetTypeDefName(mdi, token);
 				if (name is null)
 					break;
@@ -291,12 +272,13 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 				token = MDAPI.GetTypeDefEnclosingType(mdi, token);
 			}
 
-			list.Reverse();
-
 			if (list.Count == 0)
 				return null;
 			if (list.Count == 1)
 				return list[0];
+
+			list.Reverse();
+
 			var sb = new StringBuilder();
 			for (int i = 0; i < list.Count; i++) {
 				if (i > 0)
@@ -311,7 +293,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			if (exObj is null)
 				return null;
 
-			if (!GetFieldByName(exObj.ExactType, KnownMemberNames.Exception_Message_FieldName, out var ownerType, out var token))
+			if (!GetFieldByName(exObj.ExactType, KnownMemberNames.Exception_Message_FieldName, null, out var ownerType, out var token))
 				return null;
 
 			var val = GetDereferencedValue(exObj.GetFieldValue(ownerType.Class, token.Value));
@@ -324,19 +306,22 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			if (exObj is null)
 				return null;
 
-			if (!GetFieldByName(exObj.ExactType, KnownMemberNames.Exception_HResult_FieldName, out var ownerType, out var token))
+			if (!GetFieldByName(exObj.ExactType, KnownMemberNames.Exception_HResult_FieldName, null, out var ownerType, out var token))
 				return null;
 
-			var val = GetDereferencedValue(exObj.GetFieldValue(ownerType.Class, token.Value));
-
-			if (val?.ExactType?.ElementType != CorElementType.I4)
+			var value = exObj.GetFieldValue(ownerType.Class, token.Value);
+			if (value is null || value.Size != 4)
 				return null;
 
-			var data = val.ReadGenericValue();
-			if (data is null)
+			var rawValue = value.ReadGenericValue();
+			if (rawValue is null)
 				return null;
 
-			return BitConverter.ToInt32(data, 0);
+			return value.ElementType switch {
+				CorElementType.I4 => BitConverter.ToInt32(rawValue, 0),
+				CorElementType.U4 => (int)BitConverter.ToUInt32(rawValue, 0),
+				_ => null
+			};
 		}
 
 		static CorValue? GetDereferencedValue(CorValue? value) {
@@ -347,7 +332,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			return value;
 		}
 
-		static bool GetFieldByName(CorType? type, string name, [NotNullWhen(true)] out CorType? ownerType, [NotNullWhen(true)] out uint? token) {
+		static bool GetFieldByName(CorType? type, string name, string? name2, [NotNullWhen(true)] out CorType? ownerType, [NotNullWhen(true)] out uint? token) {
 			ownerType = null;
 			token = null;
 
@@ -355,7 +340,8 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 				var mdi = type.GetMetaDataImport(out uint typeToken);
 				var fdTokens = MDAPI.GetFieldTokens(mdi, typeToken);
 				foreach (var fdToken in fdTokens) {
-					if (MDAPI.GetFieldName(mdi, fdToken) != name)
+					string? fieldName = MDAPI.GetFieldName(mdi, fdToken);
+					if (fieldName != name && (name2 is null || fieldName != name2))
 						continue;
 					ownerType = type;
 					token = fdToken;
@@ -366,33 +352,6 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			}
 
 			return false;
-		}
-
-		string? TryGetExceptionName(DbgDotNetValue? exObj) {
-			if (exObj is null)
-				return null;
-			var type = exObj.Type;
-			if (type.IsConstructedGenericType)
-				type = type.GetGenericTypeDefinition();
-			return type.FullName;
-		}
-
-		string? TryGetExceptionMessage(DbgDotNetValueImpl? exObj) {
-			if (exObj is null)
-				return null;
-			var res = ReadField_CorDebug(exObj, KnownMemberNames.Exception_Message_FieldName, null);
-			if (res is null || !res.Value.HasRawValue)
-				return null;
-			return res.Value.RawValue as string;
-		}
-
-		int? TryGetExceptionHResult(DbgDotNetValueImpl? exObj) {
-			if (exObj is null)
-				return null;
-			var res = ReadField_CorDebug(exObj, KnownMemberNames.Exception_HResult_FieldName, null);
-			if (res is null || !res.Value.HasRawValue || res.Value.ValueType != DbgSimpleValueType.Int32)
-				return null;
-			return (int)res.Value.RawValue!;
 		}
 
 		internal DbgThread? TryGetThread(CorThread? thread) {
@@ -689,7 +648,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 			}
 			if (updatedModules is not null) {
 				foreach (var info in updatedModules) {
-					var mdi = info.dnModule.CorModule.GetMetaDataInterface<IMetaDataImport2>();
+					var mdi = info.dnModule.CorModule.GetMetaDataInterface<IMetaDataImport>();
 					var scopeName = MDAPI.GetModuleName(mdi) ?? string.Empty;
 					((DbgCorDebugInternalModuleImpl)info.dbgModule.InternalModule).ReflectionModule!.ScopeName = scopeName;
 				}
@@ -810,7 +769,14 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 					Environment = env.Environment,
 				};
 				Debug2.Assert(dbgOptions.Filename is not null);
+
 				dbgOptions.DebugOptions.IgnoreBreakInstructions = false;
+				dbgOptions.DebugOptions.StepperJMC = debuggerSettings.EnableJustMyCodeDebugging;
+
+				// Disable NGEN image loading for Windows 8.x store apps. No effect on desktop apps.
+				if (debuggerSettings.SuppressJITOptimization_SystemModules)
+					dbgOptions.DebugOptions.NGENPolicy = CorDebugNGENPolicy.DISABLE_LOCAL_NIC;
+
 				dbgOptions.DebugOptions.DebugOptionsProvider = new DebugOptionsProviderImpl(debuggerSettings);
 				if (debuggerSettings.RedirectGuiConsoleOutput && PortableExecutableFileHelpers.IsGuiApp(options.Filename))
 					dbgOptions.RedirectConsoleOutput = true;
@@ -846,8 +812,12 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl {
 					else
 						errMsg = dnSpy_Debugger_DotNet_CorDebug_Resources.Error_CouldNotStartDebuggerRequireAdminPrivLvl;
 				}
-				else
-					errMsg = string.Format(dnSpy_Debugger_DotNet_CorDebug_Resources.Error_CouldNotStartDebuggerCheckAccessToFile, options.Filename ?? "<???>", ex.Message);
+				else {
+					string exMessage = ex.Message;
+					if (cex is not null)
+						exMessage += $" (0x{cex.ErrorCode:X8})";
+					errMsg = string.Format(dnSpy_Debugger_DotNet_CorDebug_Resources.Error_CouldNotStartDebuggerCheckAccessToFile, options.Filename ?? "<???>", exMessage);
+				}
 
 				SendMessage(new DbgMessageConnected(errMsg, GetMessageFlags()));
 				return;

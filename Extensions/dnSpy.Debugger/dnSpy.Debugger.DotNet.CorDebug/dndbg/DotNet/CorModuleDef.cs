@@ -180,7 +180,7 @@ namespace dndbg.DotNet {
 			corLibTypes = new CorLibTypes(this, UpdateRowId(corLibAsmRef));
 		}
 
-		IAssembly GetCorAssemblyRef() {
+		IAssembly? GetCorAssemblyRef() {
 			if (corModuleDefHelper.IsCorLib == true)
 				return Assembly;
 			if (corModuleDefHelper.IsDynamic)
@@ -234,7 +234,7 @@ namespace dndbg.DotNet {
 		}
 
 		public bool IsValidToken(uint token) {
-			if ((token & 0x00FFFFFF) == 0)
+			if (MDToken.ToRID(token) == 0)
 				return false;
 			return MDAPI.IsValidToken(mdi, token);
 		}
@@ -746,7 +746,7 @@ namespace dndbg.DotNet {
 			if (DisableMDAPICalls)
 				return null;
 			uint ownerRid = MDAPI.GetEventOwnerRid(mdi, new MDToken(Table.Event, rid).Raw);
-			((CorTypeDef?)ResolveTypeDef(ownerRid))?.UpdateProperties();
+			((CorTypeDef?)ResolveTypeDef(ownerRid))?.UpdateEvents();
 			ridToEventDef.TryGetValue(rid, out info);
 			return info?.Item;
 		}
@@ -874,8 +874,8 @@ namespace dndbg.DotNet {
 				return info.Item;
 			if (DisableMDAPICalls)
 				return null;
-			uint ownerToken = MDAPI.GetGenericParamOwner(mdi2, new MDToken(Table.Param, rid).Raw);
-			((ICorTypeOrMethodDef)ResolveToken(ownerToken))?.UpdateGenericParams();
+			uint ownerToken = MDAPI.GetGenericParamOwner(mdi2, new MDToken(Table.GenericParam, rid).Raw);
+			((ICorTypeOrMethodDef?)ResolveToken(ownerToken))?.UpdateGenericParams();
 			ridToGenericParam.TryGetValue(rid, out info);
 			return info?.Item;
 		}
@@ -979,7 +979,7 @@ namespace dndbg.DotNet {
 		void UpdateTypeTables(uint[] tokens) {
 			Array.Sort(tokens);
 			foreach (uint token in tokens) {
-				uint rid = token & 0x00FFFFFF;
+				uint rid = MDToken.ToRID(token);
 				Debug.Assert(rid != 0);
 				Debug.Assert(!ridToNested.ContainsKey(rid));
 
@@ -1016,7 +1016,7 @@ namespace dndbg.DotNet {
 			foreach (var token in tokens) {
 				bool b;
 				CorTypeDef td;
-				uint rid = token & 0x00FFFFFF;
+				uint rid = MDToken.ToRID(token);
 				if (token == type.OriginalToken.Raw)
 					td = type;
 				else {
@@ -1056,7 +1056,7 @@ namespace dndbg.DotNet {
 					break;
 				if (rid == 0 || !hash.Add(rid))
 					break;
-				rid = MDAPI.GetTypeDefEnclosingType(mdi, new MDToken(Table.TypeDef, rid).Raw) & 0x00FFFFFF;
+				rid = MDToken.ToRID(MDAPI.GetTypeDefEnclosingType(mdi, new MDToken(Table.TypeDef, rid).Raw));
 			}
 			var tokens = new uint[hash.Count];
 			int i = 0;
@@ -1149,17 +1149,17 @@ namespace dndbg.DotNet {
 
 			if (token.Rid == 0) {
 				if (TryCreateResourceStream(mr.Offset, out var dataReaderFactory, out uint resourceOffset, out uint resourceLength))
-					return new EmbeddedResource(mr.Name, dataReaderFactory, resourceOffset, resourceLength, mr.Flags) { Rid = rid, Offset = mr.Offset };
-				return new EmbeddedResource(mr.Name, Array.Empty<byte>(), mr.Flags) { Rid = rid, Offset = mr.Offset };
+					return new CorEmbeddedResource(this, mr, dataReaderFactory, resourceOffset, resourceLength);
+				return new CorEmbeddedResource(this, mr, Array.Empty<byte>());
 			}
 
 			if (mr.Implementation is FileDef file)
-				return new LinkedResource(mr.Name, file, mr.Flags) { Rid = rid, Offset = mr.Offset };
+				return new CorLinkedResource(this, mr, file);
 
 			if (mr.Implementation is AssemblyRef asmRef)
-				return new AssemblyLinkedResource(mr.Name, asmRef, mr.Flags) { Rid = rid, Offset = mr.Offset };
+				return new CorAssemblyLinkedResource(this, mr, asmRef);
 
-			return new EmbeddedResource(mr.Name, Array.Empty<byte>(), mr.Flags) { Rid = rid, Offset = mr.Offset };
+			return new CorEmbeddedResource(this, mr, Array.Empty<byte>());
 		}
 
 		bool TryCreateResourceStream(uint offset, [NotNullWhen(true)] out DataReaderFactory? dataReaderFactory, out uint resourceOffset, out uint resourceLength) =>
@@ -1273,6 +1273,8 @@ namespace dndbg.DotNet {
 				if (!b)
 					break;
 				base.LoadEverything(cancellationToken);
+				// We need to make sure this is initialized since it is not called by LoadEverything
+				Assembly?.TryGetOriginalTargetFrameworkAttribute(out _, out _, out _);
 			} while (memberNeedsReInitialization);
 		}
 		bool memberNeedsReInitialization;

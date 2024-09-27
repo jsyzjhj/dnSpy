@@ -93,6 +93,18 @@ namespace dnSpy.Debugger.DotNet.Interpreter.Impl {
 			return res;
 		}
 
+		void EnsureStackCapacity(int maxStack) {
+			if (ilValueStack.Capacity >= maxStack)
+				return;
+			// Use the same growth algorithm as List<T>
+			int newCapacity = ilValueStack.Capacity == 0 ? 4 : 2 * ilValueStack.Capacity;
+			if ((uint)newCapacity > 0X7FFFFFC7)
+				newCapacity = 0X7FFFFFC7;
+			if (newCapacity < maxStack)
+				newCapacity = maxStack;
+			ilValueStack.Capacity = newCapacity;
+		}
+
 		ILValue Convert(ILValue value, DmdType targetType, bool boxIfNeeded = true) {
 			// We want to return the same ILValue, if possible, since it can contain extra information,
 			// such as address of value that the caller (debugger) would like to keep.
@@ -229,6 +241,7 @@ namespace dnSpy.Debugger.DotNet.Interpreter.Impl {
 			debuggerRuntime.Initialize(currentMethod, body);
 			var bodyBytes = state.ILBytes;
 			Debug2.Assert(bodyBytes is not null);
+			EnsureStackCapacity(body.MaxStackSize);
 			var exceptionHandlingClauses = body.ExceptionHandlingClauses;
 			int methodBodyPos = 0;
 			DmdType? constrainedType = null;
@@ -4709,10 +4722,14 @@ namespace dnSpy.Debugger.DotNet.Interpreter.Impl {
 			case TypeCode.Int64:
 			case TypeCode.UInt64:	return 8;
 			case TypeCode.Single:	return 4;
-			case TypeCode.Double:	return 8;
+			case TypeCode.Double:
+			case TypeCode.DateTime:	return 8;
+			case TypeCode.Decimal:	return 16;
 			}
 			if (type == type.AppDomain.System_IntPtr || type == type.AppDomain.System_UIntPtr)
 				return debuggerRuntime.PointerSize;
+			if (type == type.AppDomain.System_TypedReference)
+				return debuggerRuntime.PointerSize * 2;
 
 			return debuggerRuntime.GetSizeOfValueType(type);
 		}

@@ -308,7 +308,6 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl {
 						psi.RedirectStandardOutput = true;
 						psi.RedirectStandardError = true;
 					}
-					var env = new Dictionary<string, string>();
 					foreach (var kv in startMonoOptions.Environment.Environment)
 						psi.Environment[kv.Key] = kv.Value;
 					using (var process = Process.Start(psi)!) {
@@ -344,7 +343,6 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl {
 						psi.RedirectStandardOutput = true;
 						psi.RedirectStandardError = true;
 					}
-					var env = new Dictionary<string, string>();
 					foreach (var kv in startUnityOptions.Environment.Environment)
 						psi.Environment[kv.Key] = kv.Value;
 
@@ -431,6 +429,9 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl {
 					catch (SocketException sex) when (sex.SocketErrorCode == SocketError.ConnectionRefused) {
 						// Retry it in case it takes a while for mono.exe to initialize or if it hasn't started yet
 					}
+					catch (AggregateException aex) when (aex.InnerExceptions.Count == 1 && aex.InnerExceptions[0] is SocketException {SocketErrorCode: SocketError.ConnectionRefused}) {
+						// Retry it in case it takes a while
+					}
 					Thread.Sleep(100);
 				}
 
@@ -442,6 +443,8 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl {
 				vmPid = pid.Value;
 
 				hProcess_debuggee = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)vmPid);
+
+				dbgManager.WriteMessage(string.Format(dnSpy_Debugger_DotNet_Mono_Resources.MonoDebuggerConnectionMessage, ep, vm.Version.VMVersion, $"{vm.Version.MajorVersion}.{vm.Version.MinorVersion}"));
 
 				var eventThread = new Thread(MonoEventThread);
 				eventThread.IsBackground = true;

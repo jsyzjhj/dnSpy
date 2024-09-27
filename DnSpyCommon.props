@@ -4,13 +4,14 @@
     <!--
         - build.ps1
         - .github/workflows/build.yml
+        - DnSpyRoslyn.props
     NOTE: Update the ABOVE files when TargetFrameworks is updated -->
-    <TargetFrameworks>net48;net6.0-windows</TargetFrameworks>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
     <IsDotNetFramework>false</IsDotNetFramework>
     <IsDotNet>false</IsDotNet>
     <IsSelfContainedDotNet>false</IsSelfContainedDotNet>
     <IsDotNetFramework Condition=" $(TargetFramework.StartsWith(net4)) ">true</IsDotNetFramework>
-    <IsDotNet Condition=" !$(TargetFramework.StartsWith(net4)) ">false</IsDotNet>
+    <IsDotNet Condition=" !$(TargetFramework.StartsWith(net4)) ">true</IsDotNet>
     <IsSelfContainedDotNet Condition=" '$(IsDotNet)' == 'true' ">true</IsSelfContainedDotNet>
     <Features>strict;nullablePublicOnly</Features>
     <LangVersion>latest</LangVersion>
@@ -21,41 +22,45 @@
     <CopyLocalLockFileAssemblies Condition=" '$(IsDotNet)' == 'true' ">true</CopyLocalLockFileAssemblies>
     <!-- If this gets updated, also update .github/workflows/build.yml and build.ps1 -->
     <DnSpyRuntimeIdentifiers>win-x86;win-x64</DnSpyRuntimeIdentifiers>
-    <SatelliteResourceLanguages>cs;de;es;es-ES;fa;fr;hu;it;pt-BR;pt-PT;ru;tr;uk;zh-CN</SatelliteResourceLanguages>
+    <SatelliteResourceLanguages>cs;de;es;es-ES;fa;fr;hu;it;pt-BR;pt-PT;ru;tr;uk;zh-CN;vi</SatelliteResourceLanguages>
+
+    <!-- Allow compiling for windows on non-windows platforms -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!-- Enable Visual Studio Build Acceleration -->
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
 
     <!-- Update app.config whenever this value changes -->
-    <DnSpyAssemblyVersion>6.2.0.0</DnSpyAssemblyVersion>
+    <DnSpyAssemblyVersion>6.5.1.0</DnSpyAssemblyVersion>
     <!-- This is shown in the title bar -->
-    <DnSpyAssemblyInformationalVersion>v6.2.0</DnSpyAssemblyInformationalVersion>
+    <DnSpyAssemblyInformationalVersion>v6.5.1</DnSpyAssemblyInformationalVersion>
+    <!-- Prevent .NET SDK from appening the git commit hash to the information version -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <DnSpyAssemblyCopyright>Copyright (C) 2014-2020 de4dot@gmail.com</DnSpyAssemblyCopyright>
 
     <!-- AD0001: buggy Roslyn analyzer(s) crash, disable that warning -->
     <!-- WFAC010: Prevent warning about app.manifest properties -->
-    <NoWarn>NU1701;AD0001;WFAC010</NoWarn>
+    <NoWarn>NU1701;AD0001;WFAC010;NETSDK1189</NoWarn>
     <NoWarn Condition=" '$(IsDotNetFramework)' == 'true' ">$(NoWarn);CS8767</NoWarn>
 
     <!-- Update app.config whenever some of these versions change (eg. dnlib version) -->
     <DiaSymReaderVersion>1.7.0</DiaSymReaderVersion>
-    <DnlibVersion>3.5.0</DnlibVersion>
-    <IcedVersion>1.17.0</IcedVersion>
+    <DnlibVersion>4.4.0</DnlibVersion>
+    <IcedVersion>1.21.0</IcedVersion>
     <MSBuildNuGetVersion>17.1.0</MSBuildNuGetVersion>
     <MSDiagRuntimeVersion>1.1.142101</MSDiagRuntimeVersion>
-    <MSVSCompositionVersion>16.9.20</MSVSCompositionVersion>
+    <MSVSCompositionVersion>17.11.13</MSVSCompositionVersion>
     <MSVSIntellisenseVersion>15.5.27130</MSVSIntellisenseVersion>
     <MSVSTextVersion>15.5.27130</MSVSTextVersion>
-    <NewtonsoftJsonVersion>13.0.1</NewtonsoftJsonVersion>
+    <NewtonsoftJsonVersion>13.0.3</NewtonsoftJsonVersion>
     <OokiiDialogsWpfVersion>5.0.1</OokiiDialogsWpfVersion>
-    <RoslynVersion>4.1.0</RoslynVersion>
-    <SCCompositionVersion>6.0.0</SCCompositionVersion>
+    <RoslynVersion>4.11.0</RoslynVersion>
+    <SCCompositionVersion>8.0.0</SCCompositionVersion>
+    <NuGetVersion>6.11.0</NuGetVersion>
+    <DbgShimVersion>8.0.532401</DbgShimVersion>
   </PropertyGroup>
 
   <Import Project="$(MSBuildThisFileDirectory)Build\ConvertToNetstandardReferences\ConvertToNetstandardReferences.tasks" Condition=" '$(IsDotNet)' == 'true' " />
-
-  <!-- .NET 5.0 SDK doesn't currently support COMReference: https://github.com/dnSpy/dnSpy/issues/1053 -->
-  <PropertyGroup>
-    <HasCOMReference>false</HasCOMReference>
-    <HasCOMReference Condition=" '$(MSBuildRuntimeType)' != 'Core' ">true</HasCOMReference>
-    <DefineConstants Condition=" '$(HasCOMReference)' == 'true' ">$(DefineConstants);HAS_COMREFERENCE</DefineConstants>
-  </PropertyGroup>
 
 </Project>

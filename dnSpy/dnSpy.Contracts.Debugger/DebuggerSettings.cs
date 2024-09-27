@@ -89,6 +89,16 @@ namespace dnSpy.Contracts.Debugger {
 		public abstract bool AntiCheckRemoteDebuggerPresent { get; set; }
 
 		/// <summary>
+		/// true to patch NtRaiseHardError() so it can't be used to trigger kernel faults.
+		/// </summary>
+		public abstract bool AntiNtRaiseHardError { get; set; }
+
+		/// <summary>
+		/// true to patch CloseHandle() so it can't be used to detect debuggers.
+		/// </summary>
+		public abstract bool AntiCloseHandle { get; set; }
+
+		/// <summary>
 		/// true to ignore break instructions and <see cref="System.Diagnostics.Debugger.Break"/> method calls
 		/// </summary>
 		public abstract bool IgnoreBreakInstructions { get; set; }
@@ -102,6 +112,21 @@ namespace dnSpy.Contracts.Debugger {
 		/// true to enable Managed Debugging Assistants (MDA)
 		/// </summary>
 		public abstract bool EnableManagedDebuggingAssistants { get; set; }
+
+		/// <summary>
+		/// true to enable Just My Code debugging support
+		/// </summary>
+		public abstract bool EnableJustMyCodeDebugging { get; set; }
+
+		/// <summary>
+		/// Step over code in system modules
+		/// </summary>
+		public abstract bool StepOverCodeInSystemModules { get; set; }
+
+		/// <summary>
+		/// Only step into code in primary module
+		/// </summary>
+		public abstract bool OnlyStepIntoCodeInPrimaryModule { get; set; }
 
 		/// <summary>
 		/// Highlights the value of a variable that has changed in variables windows

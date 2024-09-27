@@ -29,19 +29,23 @@ using dnSpy.BamlDecompiler.Baml;
 using dnSpy.BamlDecompiler.Xaml;
 
 namespace dnSpy.BamlDecompiler.Handlers {
-	internal class XmlnsPropertyHandler : IHandler {
+	sealed class XmlnsPropertyHandler : IHandler {
 		public BamlRecordType Type => BamlRecordType.XmlnsProperty;
 
-		IEnumerable<string> ResolveCLRNamespaces(AssemblyDef assembly, string ns) {
+		static IEnumerable<string> ResolveCLRNamespaces(AssemblyDef assembly, string ns) {
 			foreach (var attr in assembly.CustomAttributes.FindAll("System.Windows.Markup.XmlnsDefinitionAttribute")) {
 				Debug.Assert(attr.ConstructorArguments.Count == 2);
 
-				var xmlNs = attr.ConstructorArguments[0].Value;
-				var clrNs = attr.ConstructorArguments[1].Value;
-				Debug.Assert(xmlNs is UTF8String && clrNs is UTF8String);
+				var xmlNsValue = attr.ConstructorArguments[0].Value;
+				var clrNsValue = attr.ConstructorArguments[1].Value;
+				var xmlNs = (xmlNsValue as UTF8String)?.String ?? xmlNsValue as string;
+				var clrNs = (clrNsValue as UTF8String)?.String ?? clrNsValue as string;
+				Debug2.Assert(xmlNs is not null && clrNs is not null);
+				if (xmlNs is null || clrNs is null)
+					continue;
 
-				if ((UTF8String)xmlNs == ns)
-					yield return (UTF8String)clrNs;
+				if (xmlNs == ns)
+					yield return clrNs;
 			}
 		}
 
@@ -51,9 +55,9 @@ namespace dnSpy.BamlDecompiler.Handlers {
 				var assembly = ctx.Baml.ResolveAssembly(asmId);
 				ctx.XmlNs.Add(new NamespaceMap(record.Prefix, assembly, record.XmlNamespace));
 
-				if (assembly is AssemblyDef) {
-					foreach (var clrNs in ResolveCLRNamespaces((AssemblyDef)assembly, record.XmlNamespace))
-						ctx.XmlNs.Add(new NamespaceMap(record.Prefix, assembly, record.XmlNamespace, clrNs));
+				if (assembly is AssemblyDef def) {
+					foreach (var clrNs in ResolveCLRNamespaces(def, record.XmlNamespace))
+						ctx.XmlNs.Add(new NamespaceMap(record.Prefix, def, record.XmlNamespace, clrNs));
 				}
 			}
 

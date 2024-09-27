@@ -27,6 +27,7 @@ using dnSpy.Contracts.Debugger;
 using dnSpy.Contracts.Debugger.CallStack;
 using dnSpy.Contracts.Debugger.DotNet.Disassembly;
 using dnSpy.Contracts.Debugger.DotNet.Evaluation;
+using dnSpy.Contracts.Debugger.DotNet.Evaluation.ExpressionCompiler;
 using dnSpy.Contracts.Debugger.DotNet.Mono;
 using dnSpy.Contracts.Debugger.Engine.Evaluation;
 using dnSpy.Contracts.Debugger.Evaluation;
@@ -71,13 +72,15 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl.Evaluation {
 		}
 
 		static DbgDotNetRuntimeFeatures CalculateFeatures(VirtualMachine vm) {
-			var res = DbgDotNetRuntimeFeatures.ObjectIds | DbgDotNetRuntimeFeatures.NoDereferencePointers;
+			var res = DbgDotNetRuntimeFeatures.ObjectIds;
 			if (!vm.Version.AtLeast(2, 24))
 				res |= DbgDotNetRuntimeFeatures.NoGenericMethods;
 			// We need FuncEvalOptions.ReturnOutThis support so func-eval of Task/ObjectIdForDebugger
 			// prop updates the struct's task field
 			if (!vm.Version.AtLeast(2, 35))
 				res |= DbgDotNetRuntimeFeatures.NoAsyncStepObjectId;
+			if (!vm.Version.AtLeast(2, 46))
+				res |= DbgDotNetRuntimeFeatures.NoDereferencePointers;
 			return res;
 		}
 
@@ -624,6 +627,7 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl.Evaluation {
 				exception = GetExceptionCore(evalInfo, DbgDotNetRuntimeConstants.ExceptionId);
 				stowedException = GetStowedExceptionCore(evalInfo, DbgDotNetRuntimeConstants.StowedExceptionId);
 				returnValues = GetReturnValuesCore(evalInfo);
+				evalInfo.Context.TryGetData(out DbgDotNetExpressionCompiler? expressionCompiler);
 
 				int count = (exception is not null ? 1 : 0) + (stowedException is not null ? 1 : 0) + returnValues.Length + (returnValues.Length != 0 ? 1 : 0);
 				if (count == 0)
@@ -632,14 +636,23 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl.Evaluation {
 				var res = new DbgDotNetAliasInfo[count];
 				int w = 0;
 				if (exception is not null)
-					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.Exception, exception.Type, DbgDotNetRuntimeConstants.ExceptionId, Guid.Empty, null);
+					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.Exception, exception.Type, DbgDotNetRuntimeConstants.ExceptionId, null);
 				if (stowedException is not null)
-					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.StowedException, stowedException.Type, DbgDotNetRuntimeConstants.StowedExceptionId, Guid.Empty, null);
+					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.StowedException, stowedException.Type, DbgDotNetRuntimeConstants.StowedExceptionId, null);
 				if (returnValues.Length != 0) {
-					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.ReturnValue, returnValues[returnValues.Length - 1].Value.Type, DbgDotNetRuntimeConstants.LastReturnValueId, Guid.Empty, null);
+					var lastReturnVal = returnValues[returnValues.Length - 1];
+					res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.ReturnValue, lastReturnVal.Value.Type, DbgDotNetRuntimeConstants.LastReturnValueId, CreateCustomTypeInfo(lastReturnVal));
+
 					foreach (var returnValue in returnValues) {
 						Debug.Assert(returnValue.Id != DbgDotNetRuntimeConstants.LastReturnValueId);
-						res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.ReturnValue, returnValue.Value.Type, returnValue.Id, Guid.Empty, null);
+						res[w++] = new DbgDotNetAliasInfo(DbgDotNetAliasInfoKind.ReturnValue, returnValue.Value.Type, returnValue.Id, CreateCustomTypeInfo(returnValue));
+					}
+
+					DbgDotNetCustomTypeInfo? CreateCustomTypeInfo(DbgDotNetReturnValueInfo returnVal) {
+						var method = returnVal.Method as DmdMethodInfo;
+						if (method?.ReturnType.Equals(returnVal.Value.Type) == true)
+							return expressionCompiler?.CreateCustomTypeInfo(method.ReturnParameter);
+						return null;
 					}
 				}
 				if (w != res.Length)
@@ -1279,6 +1292,8 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl.Evaluation {
 			result = default;
 			return false;
 		}
+
+		public DbgDotNetValue? GetObjectValueAtAddress(DbgEvaluationInfo evalInfo, ulong address) => null; // Not supported on Mono.
 
 		protected override void CloseCore(DbgDispatcher dispatcher) { }
 	}

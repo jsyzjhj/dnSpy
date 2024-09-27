@@ -202,7 +202,7 @@ namespace dnSpy.Decompiler.ILSpy.Core.VisualBasic {
 			var settings = GetDecompilerSettings();
 			CSharpDecompiler.AddXmlDocumentation(ref state, settings, astBuilder);
 			var csharpUnit = astBuilder.SyntaxTree;
-			csharpUnit.AcceptVisitor(new ICSharpCode.NRefactory.CSharp.InsertParenthesesVisitor() { InsertParenthesesForReadability = true });
+			csharpUnit.AcceptVisitor(new ICSharpCode.NRefactory.CSharp.InsertParenthesesVisitor() { InsertParenthesesForReadability = settings.InsertParenthesesForReadability });
 			GenericGrammarAmbiguityVisitor.ResolveAmbiguities(csharpUnit);
 			var unit = csharpUnit.AcceptVisitor(new CSharpToVBConverterVisitor(state.AstBuilder.Context.CurrentModule, new ILSpyEnvironmentProvider(state.State.XmlDoc_StringBuilder)), null);
 			var outputFormatter = new VBTextOutputFormatter(output, astBuilder.Context);
@@ -254,8 +254,8 @@ namespace dnSpy.Decompiler.ILSpy.Core.VisualBasic {
 			if (type.TryGetByRefSig() is not null) {
 				output.Write("ByRef", BoxedTextColor.Keyword);
 				output.Write(" ", BoxedTextColor.Text);
-				if (astType is ICSharpCode.NRefactory.CSharp.ComposedType && ((ICSharpCode.NRefactory.CSharp.ComposedType)astType).PointerRank > 0)
-					((ICSharpCode.NRefactory.CSharp.ComposedType)astType).PointerRank--;
+				if (astType is ComposedType composedType && composedType.HasRefSpecifier)
+					composedType.HasRefSpecifier = false;
 			}
 
 			var vbAstType = astType.AcceptVisitor(converter, null);

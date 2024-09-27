@@ -25,6 +25,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Windows;
+using System.Windows.Controls;
 using dnSpy.Contracts.App;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents.Tabs;
@@ -44,13 +46,15 @@ namespace dnSpy.MainApp {
 		readonly IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider;
 		readonly IAppWindow appWindow;
 		readonly IExtensionService extensionService;
+		readonly IUpdateService updateService;
 		readonly IContentType aboutContentType;
 
 		[ImportingConstructor]
-		AboutScreenDocumentTabContentFactory(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IAppWindow appWindow, IExtensionService extensionService, IContentTypeRegistryService contentTypeRegistryService) {
+		AboutScreenDocumentTabContentFactory(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IAppWindow appWindow, IExtensionService extensionService, IUpdateService updateService, IContentTypeRegistryService contentTypeRegistryService) {
 			this.documentViewerContentFactoryProvider = documentViewerContentFactoryProvider;
 			this.appWindow = appWindow;
 			this.extensionService = extensionService;
+			this.updateService = updateService;
 			aboutContentType = contentTypeRegistryService.GetContentType(ContentTypes.AboutDnSpy);
 		}
 
@@ -60,7 +64,7 @@ namespace dnSpy.MainApp {
 
 		public DocumentTabContent? Deserialize(Guid guid, ISettingsSection section, IDocumentTabContentFactoryContext context) {
 			if (guid == GUID_SerializedContent)
-				return new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, aboutContentType);
+				return new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, updateService, aboutContentType);
 			return null;
 		}
 
@@ -77,20 +81,22 @@ namespace dnSpy.MainApp {
 		readonly IDocumentTabService documentTabService;
 		readonly IAppWindow appWindow;
 		readonly IExtensionService extensionService;
+		readonly IUpdateService updateService;
 		readonly IContentType aboutContentType;
 
 		[ImportingConstructor]
-		AboutScreenMenuItem(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IDocumentTabService documentTabService, IAppWindow appWindow, IExtensionService extensionService, IContentTypeRegistryService contentTypeRegistryService) {
+		AboutScreenMenuItem(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IDocumentTabService documentTabService, IAppWindow appWindow, IExtensionService extensionService, IUpdateService updateService, IContentTypeRegistryService contentTypeRegistryService) {
 			this.documentViewerContentFactoryProvider = documentViewerContentFactoryProvider;
 			this.documentTabService = documentTabService;
 			this.appWindow = appWindow;
 			this.extensionService = extensionService;
+			this.updateService = updateService;
 			aboutContentType = contentTypeRegistryService.GetContentType(ContentTypes.AboutDnSpy);
 		}
 
 		public override void Execute(IMenuItemContext context) {
 			var tab = documentTabService.GetOrCreateActiveTab();
-			tab.Show(new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, aboutContentType), null, null);
+			tab.Show(new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, updateService, aboutContentType), null, null);
 			documentTabService.SetFocus(tab);
 		}
 	}
@@ -100,17 +106,19 @@ namespace dnSpy.MainApp {
 
 		readonly IAppWindow appWindow;
 		readonly IExtensionService extensionService;
+		readonly IUpdateService updateService;
 		readonly IContentType aboutContentType;
 		readonly IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider;
 
-		public AboutScreenDocumentTabContent(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IAppWindow appWindow, IExtensionService extensionService, IContentType aboutContentType) {
+		public AboutScreenDocumentTabContent(IDocumentViewerContentFactoryProvider documentViewerContentFactoryProvider, IAppWindow appWindow, IExtensionService extensionService, IUpdateService updateService, IContentType aboutContentType) {
 			this.documentViewerContentFactoryProvider = documentViewerContentFactoryProvider;
 			this.appWindow = appWindow;
 			this.extensionService = extensionService;
+			this.updateService = updateService;
 			this.aboutContentType = aboutContentType;
 		}
 
-		public override DocumentTabContent Clone() => new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, aboutContentType);
+		public override DocumentTabContent Clone() => new AboutScreenDocumentTabContent(documentViewerContentFactoryProvider, appWindow, extensionService, updateService, aboutContentType);
 		public override DocumentTabUIContext CreateUIContext(IDocumentTabUIContextLocator locator) => (DocumentTabUIContext)locator.Get<IDocumentViewer>();
 
 		public override void OnShow(IShowContext ctx) {
@@ -189,7 +197,7 @@ namespace dnSpy.MainApp {
 			}
 		}
 
-		void Write(IDecompilerOutput output) {
+		void Write(IDocumentViewerOutput output) {
 #if NETFRAMEWORK
 			const string frameworkName = ".NET Framework";
 #elif NET
@@ -201,6 +209,16 @@ namespace dnSpy.MainApp {
 			output.WriteLine();
 			output.WriteLine(dnSpy_Resources.AboutScreen_LicenseInfo, BoxedTextColor.Text);
 			output.WriteLine();
+
+			output.AddUIElement(delegate {
+				var button = new Button { Content = dnSpy_Resources.AboutScreen_CheckForUpdates };
+				button.SetResourceReference(FrameworkElement.StyleProperty, "TextEditorButton");
+				button.Click += OnUpdateButtonClick;
+				return button;
+			});
+			output.WriteLine();
+			output.WriteLine();
+
 			output.WriteLine(dnSpy_Resources.AboutScreen_LoadedFiles, BoxedTextColor.Text);
 			foreach (var info in GetInfos()) {
 				output.WriteLine();
@@ -210,6 +228,28 @@ namespace dnSpy.MainApp {
 			}
 			output.WriteLine();
 			WriteResourceFile(output, "dnSpy.LicenseInfo.CREDITS.txt");
+		}
+
+		async void OnUpdateButtonClick(object sender, RoutedEventArgs e) {
+			e.Handled = true;
+			var button = (Button)sender;
+
+			button.IsEnabled = false;
+			button.Content = dnSpy_Resources.AboutScreen_CheckingForUpdates;
+
+			var updateResult = await updateService.CheckForUpdatesAsync();
+			if (!updateResult.Success)
+				MsgBox.Instance.Show(dnSpy_Resources.AboutScreen_FailedToRetrieveUpdateInfo);
+			else if (!updateResult.UpdateAvailable)
+				MsgBox.Instance.Show(dnSpy_Resources.AboutScreen_RunningLatestVersion);
+			else {
+				var result = MsgBox.Instance.Show(string.Format(dnSpy_Resources.AboutScreen_NewUpdateAvailable, updateResult.VersionInfo.Version), MsgBoxButton.Yes | MsgBoxButton.No);
+				if (result == MsgBoxButton.Yes)
+					AboutHelpers.OpenWebPage(updateResult.VersionInfo.DownloadUrl, MsgBox.Instance);
+			}
+
+			button.Content = dnSpy_Resources.AboutScreen_CheckForUpdates;
+			button.IsEnabled = true;
 		}
 
 		void WriteResourceFile(IDecompilerOutput output, string name, bool addNewLine = true) {

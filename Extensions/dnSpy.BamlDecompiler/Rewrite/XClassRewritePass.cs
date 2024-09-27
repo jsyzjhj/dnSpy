@@ -24,9 +24,10 @@ using System.Linq;
 using System.Xml.Linq;
 using dnlib.DotNet;
 using dnSpy.BamlDecompiler.Xaml;
+using dnSpy.Contracts.Decompiler;
 
 namespace dnSpy.BamlDecompiler.Rewrite {
-	internal class XClassRewritePass : IRewritePass {
+	sealed class XClassRewritePass : IRewritePass {
 		public void Run(XamlContext ctx, XDocument document) {
 			foreach (var elem in document.Elements(ctx.GetPseudoName("Document")).Elements())
 				RewriteClass(ctx, elem);
@@ -43,7 +44,8 @@ namespace dnSpy.BamlDecompiler.Rewrite {
 				return;
 
 			var newType = typeDef.BaseType;
-			var xamlType = new XamlType(newType.DefinitionAssembly, newType.ReflectionNamespace, newType.Name);
+			var name = XamlTypeName.From(newType, out string clrNs);
+			var xamlType = new XamlType(newType.DefinitionAssembly, clrNs, name);
 			xamlType.ResolveNamespace(elem, ctx);
 
 			elem.Name = xamlType.ToXName(ctx);
@@ -55,7 +57,7 @@ namespace dnSpy.BamlDecompiler.Rewrite {
 				var classModifierName = ctx.GetKnownNamespace("ClassModifier", XamlContext.KnownNamespace_Xaml, elem);
 				attrs.Insert(0, new XAttribute(classModifierName, ctx.BamlDecompilerOptions.InternalClassModifier));
 			}
-			attrs.Insert(0, new XAttribute(attrName, type.ResolvedType.ReflectionFullName));
+			attrs.Insert(0, new XAttribute(attrName, IdentifierEscaper.Escape(type.ResolvedType.ReflectionFullName)));
 			elem.ReplaceAttributes(attrs);
 		}
 	}

@@ -20,7 +20,10 @@
 using System;
 using System.IO;
 using System.Windows.Input;
+using dnSpy.Contracts.App;
+using dnSpy.Contracts.Controls.ToolWindows;
 using dnSpy.Contracts.Debugger;
+using dnSpy.Contracts.Debugger.Dialogs;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
 using dnSpy.Contracts.Debugger.StartDebugging;
 using dnSpy.Contracts.Debugger.StartDebugging.Dialog;
@@ -71,11 +74,12 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Dialogs.DebugProgram {
 		}
 		string hostArguments = string.Empty;
 
+		public UInt32VM ConnectionTimeout { get; }
+
 		public ICommand PickHostFilenameCommand => new RelayCommand(a => PickNewHostFilename(), a => CanPickNewHostFilename);
 
-		public DotNetStartDebuggingOptionsPage(IPickFilename pickFilename, IPickDirectory pickDirectory)
-			: base(pickFilename, pickDirectory) {
-		}
+		public DotNetStartDebuggingOptionsPage(IPickFilename pickFilename, IPickDirectory pickDirectory, IDbgEnvironmentEditorService environmentEditorService)
+			: base(pickFilename, pickDirectory, environmentEditorService) => ConnectionTimeout = new UInt32VM(a => UpdateIsValid(), useDecimal: true);
 
 		bool CanPickNewHostFilename => UseHost;
 
@@ -129,6 +133,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Dialogs.DebugProgram {
 			UseHost = options.UseHost;
 			HostFilename = options.Host ?? string.Empty;
 			HostArguments = options.HostArguments ?? string.Empty;
+			ConnectionTimeout.Value = (uint)options.ConnectionTimeout.TotalSeconds;
 		}
 
 		public override StartDebuggingOptionsInfo GetOptions() {
@@ -136,6 +141,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Dialogs.DebugProgram {
 				UseHost = UseHost,
 				Host = HostFilename,
 				HostArguments = HostArguments,
+				ConnectionTimeout = TimeSpan.FromSeconds(ConnectionTimeout.Value)
 			});
 			var flags = StartDebuggingOptionsInfoFlags.None;
 			if (File.Exists(options.Filename)) {
@@ -158,7 +164,7 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Dialogs.DebugProgram {
 
 		protected override bool CalculateIsValid() =>
 			string.IsNullOrEmpty(Verify(nameof(HostFilename))) &&
-			string.IsNullOrEmpty(Verify(nameof(Filename)));
+			string.IsNullOrEmpty(Verify(nameof(Filename))) && !ConnectionTimeout.HasError;
 
 		protected override string Verify(string columnName) {
 			if (columnName == nameof(HostFilename)) {

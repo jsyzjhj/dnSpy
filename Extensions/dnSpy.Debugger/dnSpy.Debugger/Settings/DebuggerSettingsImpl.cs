@@ -199,6 +199,40 @@ namespace dnSpy.Debugger.Settings {
 		}
 		bool antiCheckRemoteDebuggerPresent = true;
 
+		public override bool AntiNtRaiseHardError {
+			get {
+				lock (lockObj)
+					return antiNtRaiseHardError;
+			}
+			set {
+				bool modified;
+				lock (lockObj) {
+					modified = antiNtRaiseHardError != value;
+					antiNtRaiseHardError = value;
+				}
+				if (modified)
+					OnPropertyChanged(nameof(AntiNtRaiseHardError));
+			}
+		}
+		bool antiNtRaiseHardError;
+
+		public override bool AntiCloseHandle {
+			get {
+				lock (lockObj)
+					return antiCloseHandle;
+			}
+			set {
+				bool modified;
+				lock (lockObj) {
+					modified = antiCloseHandle != value;
+					antiCloseHandle = value;
+				}
+				if (modified)
+					OnPropertyChanged(nameof(AntiCloseHandle));
+			}
+		}
+		bool antiCloseHandle = true;
+
 		public override bool IgnoreBreakInstructions {
 			get {
 				lock (lockObj)
@@ -249,6 +283,57 @@ namespace dnSpy.Debugger.Settings {
 			}
 		}
 		bool enableManagedDebuggingAssistants = true;
+
+		public override bool EnableJustMyCodeDebugging {
+			get {
+				lock (lockObj)
+					return enableJustMyCodeDebugging;
+			}
+			set {
+				bool modified;
+				lock (lockObj) {
+					modified = enableJustMyCodeDebugging != value;
+					enableJustMyCodeDebugging = value;
+				}
+				if (modified)
+					OnPropertyChanged(nameof(EnableJustMyCodeDebugging));
+			}
+		}
+		bool enableJustMyCodeDebugging = false;
+
+		public override bool StepOverCodeInSystemModules {
+			get {
+				lock (lockObj)
+					return stepOverCodeInSystemModules;
+			}
+			set {
+				bool modified;
+				lock (lockObj) {
+					modified = stepOverCodeInSystemModules != value;
+					stepOverCodeInSystemModules = value;
+				}
+				if (modified)
+					OnPropertyChanged(nameof(StepOverCodeInSystemModules));
+			}
+		}
+		bool stepOverCodeInSystemModules = false;
+
+		public override bool OnlyStepIntoCodeInPrimaryModule {
+			get {
+				lock (lockObj)
+					return onlyStepIntoCodeInPrimaryModule;
+			}
+			set {
+				bool modified;
+				lock (lockObj) {
+					modified = onlyStepIntoCodeInPrimaryModule != value;
+					onlyStepIntoCodeInPrimaryModule = value;
+				}
+				if (modified)
+					OnPropertyChanged(nameof(OnlyStepIntoCodeInPrimaryModule));
+			}
+		}
+		bool onlyStepIntoCodeInPrimaryModule = false;
 
 		public override bool HighlightChangedVariables {
 			get {
@@ -637,9 +722,14 @@ namespace dnSpy.Debugger.Settings {
 			other.PreventManagedDebuggerDetection = PreventManagedDebuggerDetection;
 			other.AntiIsDebuggerPresent = AntiIsDebuggerPresent;
 			other.AntiCheckRemoteDebuggerPresent = AntiCheckRemoteDebuggerPresent;
+			other.AntiNtRaiseHardError = AntiNtRaiseHardError;
+			other.AntiCloseHandle = AntiCloseHandle;
 			other.IgnoreBreakInstructions = IgnoreBreakInstructions;
 			other.BreakAllProcesses = BreakAllProcesses;
 			other.EnableManagedDebuggingAssistants = EnableManagedDebuggingAssistants;
+			other.EnableJustMyCodeDebugging = EnableJustMyCodeDebugging;
+			other.StepOverCodeInSystemModules = StepOverCodeInSystemModules;
+			other.OnlyStepIntoCodeInPrimaryModule = OnlyStepIntoCodeInPrimaryModule;
 			other.HighlightChangedVariables = HighlightChangedVariables;
 			other.ShowRawStructureOfObjects = ShowRawStructureOfObjects;
 			other.SortParameters = SortParameters;
@@ -688,9 +778,14 @@ namespace dnSpy.Debugger.Settings {
 			PreventManagedDebuggerDetection = sect.Attribute<bool?>(nameof(PreventManagedDebuggerDetection)) ?? PreventManagedDebuggerDetection;
 			AntiIsDebuggerPresent = sect.Attribute<bool?>(nameof(AntiIsDebuggerPresent)) ?? AntiIsDebuggerPresent;
 			AntiCheckRemoteDebuggerPresent = sect.Attribute<bool?>(nameof(AntiCheckRemoteDebuggerPresent)) ?? AntiCheckRemoteDebuggerPresent;
+			AntiNtRaiseHardError = sect.Attribute<bool?>(nameof(AntiNtRaiseHardError)) ?? AntiNtRaiseHardError;
+			AntiCloseHandle = sect.Attribute<bool?>(nameof(AntiCloseHandle)) ?? AntiCloseHandle;
 			IgnoreBreakInstructions = sect.Attribute<bool?>(nameof(IgnoreBreakInstructions)) ?? IgnoreBreakInstructions;
 			BreakAllProcesses = sect.Attribute<bool?>(nameof(BreakAllProcesses)) ?? BreakAllProcesses;
 			EnableManagedDebuggingAssistants = sect.Attribute<bool?>(nameof(EnableManagedDebuggingAssistants)) ?? EnableManagedDebuggingAssistants;
+			EnableJustMyCodeDebugging = sect.Attribute<bool?>(nameof(EnableJustMyCodeDebugging)) ?? EnableJustMyCodeDebugging;
+			StepOverCodeInSystemModules = sect.Attribute<bool?>(nameof(StepOverCodeInSystemModules)) ?? StepOverCodeInSystemModules;
+			OnlyStepIntoCodeInPrimaryModule = sect.Attribute<bool?>(nameof(OnlyStepIntoCodeInPrimaryModule)) ?? OnlyStepIntoCodeInPrimaryModule;
 			HighlightChangedVariables = sect.Attribute<bool?>(nameof(HighlightChangedVariables)) ?? HighlightChangedVariables;
 			ShowRawStructureOfObjects = sect.Attribute<bool?>(nameof(ShowRawStructureOfObjects)) ?? ShowRawStructureOfObjects;
 			SortParameters = sect.Attribute<bool?>(nameof(SortParameters)) ?? SortParameters;
@@ -728,9 +823,14 @@ namespace dnSpy.Debugger.Settings {
 			sect.Attribute(nameof(PreventManagedDebuggerDetection), PreventManagedDebuggerDetection);
 			sect.Attribute(nameof(AntiIsDebuggerPresent), AntiIsDebuggerPresent);
 			sect.Attribute(nameof(AntiCheckRemoteDebuggerPresent), AntiCheckRemoteDebuggerPresent);
+			sect.Attribute(nameof(AntiNtRaiseHardError), AntiNtRaiseHardError);
+			sect.Attribute(nameof(AntiCloseHandle), AntiCloseHandle);
 			sect.Attribute(nameof(IgnoreBreakInstructions), IgnoreBreakInstructions);
 			sect.Attribute(nameof(BreakAllProcesses), BreakAllProcesses);
 			sect.Attribute(nameof(EnableManagedDebuggingAssistants), EnableManagedDebuggingAssistants);
+			sect.Attribute(nameof(EnableJustMyCodeDebugging), EnableJustMyCodeDebugging);
+			sect.Attribute(nameof(StepOverCodeInSystemModules), StepOverCodeInSystemModules);
+			sect.Attribute(nameof(OnlyStepIntoCodeInPrimaryModule), OnlyStepIntoCodeInPrimaryModule);
 			sect.Attribute(nameof(HighlightChangedVariables), HighlightChangedVariables);
 			sect.Attribute(nameof(ShowRawStructureOfObjects), ShowRawStructureOfObjects);
 			sect.Attribute(nameof(SortParameters), SortParameters);

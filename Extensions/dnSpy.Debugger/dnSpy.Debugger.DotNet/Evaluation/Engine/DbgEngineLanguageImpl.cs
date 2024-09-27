@@ -46,6 +46,7 @@ namespace dnSpy.Debugger.DotNet.Evaluation.Engine {
 		public override DbgEngineValueNodeProvider ExceptionsProvider { get; }
 		public override DbgEngineValueNodeProvider ReturnValuesProvider { get; }
 		public override DbgEngineValueNodeProvider TypeVariablesProvider { get; }
+		public override DbgEngineValueNodeProvider StaticFieldsProvider { get; }
 		public override DbgEngineValueNodeFactory ValueNodeFactory { get; }
 
 		readonly DbgMethodDebugInfoProvider dbgMethodDebugInfoProvider;
@@ -80,6 +81,7 @@ namespace dnSpy.Debugger.DotNet.Evaluation.Engine {
 			ExceptionsProvider = new DbgEngineExceptionsProviderImpl(valueNodeFactory);
 			ReturnValuesProvider = new DbgEngineReturnValuesProviderImpl(valueNodeFactory);
 			TypeVariablesProvider = new DbgEngineTypeVariablesProviderImpl(valueNodeFactory);
+			StaticFieldsProvider = new DbgEngineStaticFieldsProviderImpl(valueNodeFactory, formatter);
 			ValueNodeFactory = new DbgEngineValueNodeFactoryImpl(expressionEvaluator, valueNodeFactory, formatter);
 			debuggerDisplayAttributeEvaluator = expressionEvaluator;
 		}
@@ -121,7 +123,8 @@ namespace dnSpy.Debugger.DotNet.Evaluation.Engine {
 			Debug2.Assert(context.Runtime.GetDotNetRuntime() is not null);
 
 			IDebuggerDisplayAttributeEvaluatorUtils.Initialize(context, debuggerDisplayAttributeEvaluator);
-			// Needed by DebuggerRuntimeImpl (calls expressionCompiler.TryGetAliasInfo())
+			// Needed by DebuggerRuntimeImpl (calls expressionCompiler.TryGetAliasInfo()), DbgCorDebugInternalRuntimeImpl,
+			// DbgMonoDebugInternalRuntimeImpl and DbgEngineStaticFieldsProviderImpl (calls expressionCompiler.CreateCustomTypeInfo())
 			context.GetOrCreateData(() => expressionCompiler);
 
 			if ((context.Options & DbgEvaluationContextOptions.NoMethodBody) == 0 && location is IDbgDotNetCodeLocation loc) {

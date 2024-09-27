@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -32,10 +33,12 @@ using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
 using dnSpy.Contracts.Documents.Tabs;
 using dnSpy.Contracts.Documents.Tabs.DocViewer;
+using dnSpy.Contracts.Documents.TreeView;
 using dnSpy.Contracts.Menus;
 using dnSpy.Contracts.MVVM;
 using dnSpy.Contracts.Search;
 using dnSpy.Contracts.Settings.AppearanceCategory;
+using dnSpy.Contracts.TreeView;
 using Microsoft.VisualStudio.Text.Classification;
 
 namespace dnSpy.Search {
@@ -121,6 +124,10 @@ namespace dnSpy.Search {
 			classificationFormatMap.ClassificationFormatMappingChanged += ClassificationFormatMap_ClassificationFormatMappingChanged;
 			searchSettings.PropertyChanged += SearchSettings_PropertyChanged;
 			documentTabService.DocumentTreeView.DocumentService.CollectionChanged += DocumentService_CollectionChanged;
+			// TODO: This currently causes frequent refreshes since the SelectionChanged event gets fired twice when the selection changes.
+			// Once to remove the old selection and once to add the new selection.
+			// documentTabService.DocumentTreeView.SelectionChanged += DocumentTreeView_SelectionChanged;
+			documentTabService.DocumentModified += DocumentTabService_FileModified;
 
 			searchControl.SearchListBoxDoubleClick += (s, e) => FollowSelectedReference();
 			var cmds = wpfCommandService.GetCommands(ControlConstants.GUID_SEARCH_LISTBOX);
@@ -168,6 +175,8 @@ namespace dnSpy.Search {
 			searchControl.InputBindings.Add(new KeyBinding(command, new KeyGesture(key, ModifierKeys.Control)));
 		}
 
+		void DocumentTabService_FileModified(object? sender, DocumentModifiedEventArgs e) => vmSearch.Restart();
+
 		void DocumentService_CollectionChanged(object? sender, NotifyDocumentCollectionChangedEventArgs e) {
 			switch (e.Type) {
 			case NotifyDocumentCollectionType.Clear:
@@ -189,6 +198,41 @@ namespace dnSpy.Search {
 
 			default:
 				Debug.Fail("Unknown NotifyFileCollectionType");
+				break;
+			}
+		}
+
+		void DocumentTreeView_SelectionChanged(object? sender, TreeViewSelectionChangedEventArgs e) {
+			switch (vmSearch.SearchSettings.SearchLocation) {
+			case SearchLocation.AllFiles:
+				// Nothing to do.
+				break;
+			case SearchLocation.SelectedFiles:
+				var oldFiles = e.Removed.Select(x => x.GetDocumentNode()).Where(x => x is not null).Distinct();
+				var newFiles = e.Added.Select(x => x.GetDocumentNode()).Where(x => x is not null).Distinct();
+				if (oldFiles.SequenceEqual(newFiles))
+					break;
+				vmSearch.Restart();
+				break;
+			case SearchLocation.AllFilesInSameDir:
+				var oldDirs = e.Removed.Select(x => x.GetDocumentNode())
+							   .Where(x => x is not null && File.Exists(x.Document.Filename))
+							   .Select(x => Path.GetDirectoryName(x!.Document.Filename)).Distinct();
+				var newDirs = e.Added.Select(x => x.GetDocumentNode())
+							   .Where(x => x is not null && File.Exists(x.Document.Filename))
+							   .Select(x => Path.GetDirectoryName(x!.Document.Filename)).Distinct();
+				if (oldDirs.SequenceEqual(newDirs))
+					break;
+				vmSearch.Restart();
+				break;
+			case SearchLocation.SelectedType:
+				var oldTypes = e.Removed.Select(x => x.GetAncestorOrSelf<TypeNode>()).Where(x => x is not null)
+								.Distinct();
+				var newTypes = e.Added.Select(x => x.GetAncestorOrSelf<TypeNode>()).Where(x => x is not null)
+								.Distinct();
+				if (oldTypes.SequenceEqual(newTypes))
+					break;
+				vmSearch.Restart();
 				break;
 			}
 		}

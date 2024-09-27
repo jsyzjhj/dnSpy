@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -15,31 +16,29 @@ using Microsoft.CodeAnalysis.Formatting.Rules;
 using Microsoft.CodeAnalysis.Indentation;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.PooledObjects;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.Utilities;
 
 namespace dnSpy.Roslyn.Internal.SmartIndent.CSharp {
-	internal class CSharpSmartTokenFormatter : ISmartTokenFormatter {
-		private readonly OptionSet _optionSet;
-		private readonly IEnumerable<AbstractFormattingRule> _formattingRules;
+	class CSharpSmartTokenFormatter : ISmartTokenFormatter {
+		readonly IndentationOptions _options;
+		readonly ImmutableArray<AbstractFormattingRule> _formattingRules;
 
-		private readonly CompilationUnitSyntax _root;
+		readonly CompilationUnitSyntax _root;
+		readonly SourceText _text;
 
-		public CSharpSmartTokenFormatter(OptionSet optionSet,
-			IEnumerable<AbstractFormattingRule> formattingRules,
-			CompilationUnitSyntax root) {
-			Contract.ThrowIfNull(optionSet);
-			Contract.ThrowIfNull(formattingRules);
+		public CSharpSmartTokenFormatter(IndentationOptions options, ImmutableArray<AbstractFormattingRule> formattingRules, CompilationUnitSyntax root, SourceText text) {
 			Contract.ThrowIfNull(root);
 
-			_optionSet = optionSet;
+			_options = options;
 			_formattingRules = formattingRules;
 
 			_root = root;
+			_text = text;
 		}
 
-		public IList<TextChange> FormatRange(Workspace workspace, SyntaxToken startToken, SyntaxToken endToken,
-			CancellationToken cancellationToken) {
+		public IList<TextChange> FormatRange(SyntaxToken startToken, SyntaxToken endToken, CancellationToken cancellationToken) {
 			Contract.ThrowIfTrue(startToken.Kind() is SyntaxKind.None or SyntaxKind.EndOfFileToken);
 			Contract.ThrowIfTrue(endToken.Kind() is SyntaxKind.None or SyntaxKind.EndOfFileToken);
 
@@ -52,23 +51,22 @@ namespace dnSpy.Roslyn.Internal.SmartIndent.CSharp {
 			//            but we would like to apply line operation in a completed try block even if there is no catch/finally block
 			// Exception 2: Similar behavior for do-while
 			if (common.ContainsDiagnostics && !CloseBraceOfTryOrDoBlock(endToken)) {
-				smartTokenformattingRules = (new NoLineChangeFormattingRule()).Concat(_formattingRules);
+				smartTokenformattingRules = ImmutableArray<AbstractFormattingRule>.Empty.Add(
+					new NoLineChangeFormattingRule()).AddRange(_formattingRules);
 			}
 
-			return Formatter.GetFormattedTextChanges(_root,
-				new TextSpan[] { TextSpan.FromBounds(startToken.SpanStart, endToken.Span.End) }, workspace, _optionSet,
-				smartTokenformattingRules, cancellationToken);
+			var formatter = CSharpSyntaxFormatting.Instance;
+			var result = formatter.GetFormattingResult(
+				_root, new[] { TextSpan.FromBounds(startToken.SpanStart, endToken.Span.End) }, _options.FormattingOptions, smartTokenformattingRules, cancellationToken);
+			return result.GetTextChanges(cancellationToken);
 		}
 
-		private static bool CloseBraceOfTryOrDoBlock(SyntaxToken endToken) {
-			return endToken.IsKind(SyntaxKind.CloseBraceToken) &&
-				   endToken.Parent.IsKind(SyntaxKind.Block) &&
-				   (endToken.Parent.IsParentKind(SyntaxKind.TryStatement) ||
-					endToken.Parent.IsParentKind(SyntaxKind.DoStatement));
-		}
+		private static bool CloseBraceOfTryOrDoBlock(SyntaxToken endToken) => endToken.IsKind(SyntaxKind.CloseBraceToken) &&
+																			  endToken.Parent.IsKind(SyntaxKind.Block) &&
+																			  (endToken.Parent.IsParentKind(SyntaxKind.TryStatement) ||
+																			   endToken.Parent.IsParentKind(SyntaxKind.DoStatement));
 
-		public async Task<IList<TextChange>> FormatTokenAsync(Workspace workspace, SyntaxToken token,
-			CancellationToken cancellationToken) {
+		public IList<TextChange> FormatToken(SyntaxToken token, CancellationToken cancellationToken) {
 			Contract.ThrowIfTrue(token.Kind() is SyntaxKind.None or SyntaxKind.EndOfFileToken);
 
 			// get previous token
@@ -93,21 +91,19 @@ namespace dnSpy.Roslyn.Internal.SmartIndent.CSharp {
 				}
 			}
 
-			var smartTokenformattingRules = (new SmartTokenFormattingRule()).Concat(_formattingRules);
+			ImmutableArray<AbstractFormattingRule> smartTokenFormattingRules = [new SmartTokenFormattingRule(), .. _formattingRules];
 			var adjustedStartPosition = previousToken.SpanStart;
-			var indentStyle = _optionSet.GetOption(FormattingOptions.SmartIndent, LanguageNames.CSharp);
-			if (token.IsKind(SyntaxKind.OpenBraceToken) &&
-				indentStyle != FormattingOptions.IndentStyle.Smart) {
+			if (token.IsKind(SyntaxKind.OpenBraceToken) && _options.IndentStyle != FormattingOptions2.IndentStyle.Smart) {
 				RoslynDebug.AssertNotNull(token.SyntaxTree);
-				var text = await token.SyntaxTree.GetTextAsync(cancellationToken).ConfigureAwait(false);
-				if (token.IsFirstTokenOnLine(text)) {
+				if (token.IsFirstTokenOnLine(_text)) {
 					adjustedStartPosition = token.SpanStart;
 				}
 			}
 
-			return Formatter.GetFormattedTextChanges(_root,
-				new TextSpan[] { TextSpan.FromBounds(adjustedStartPosition, adjustedEndPosition) },
-				workspace, _optionSet, smartTokenformattingRules, cancellationToken);
+			var formatter = CSharpSyntaxFormatting.Instance;
+			var result = formatter.GetFormattingResult(
+				_root, [ TextSpan.FromBounds(adjustedStartPosition, adjustedEndPosition) ], _options.FormattingOptions, smartTokenFormattingRules, cancellationToken);
+			return result.GetTextChanges(cancellationToken);
 		}
 
 		private class NoLineChangeFormattingRule : AbstractFormattingRule {
@@ -132,7 +128,7 @@ namespace dnSpy.Roslyn.Internal.SmartIndent.CSharp {
 		}
 
 		private class SmartTokenFormattingRule : NoLineChangeFormattingRule {
-			public override void AddSuppressOperations(List<SuppressOperation> list, SyntaxNode node,
+			public override void AddSuppressOperations(ArrayBuilder<SuppressOperation> list, SyntaxNode node,
 				in NextSuppressOperationAction nextOperation) {
 				// don't suppress anything
 			}

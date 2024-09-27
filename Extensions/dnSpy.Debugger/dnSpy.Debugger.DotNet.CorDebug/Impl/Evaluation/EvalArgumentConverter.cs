@@ -68,13 +68,15 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl.Evaluation {
 		public unsafe EvalArgumentResult Convert(object? value, DmdType defaultType, out DmdType type) {
 			if (value is null) {
 				type = defaultType;
-				return new EvalArgumentResult(dnEval.CreateNull());
+				var corType = GetType(defaultType);
+				return new EvalArgumentResult(AddValue(defaultType, dnEval.TryCreateNull(corType) ?? dnEval.CreateNull()));
 			}
 			if (value is DbgValue dbgValue) {
 				value = dbgValue.InternalValue;
 				if (value is null) {
 					type = defaultType;
-					return new EvalArgumentResult(dnEval.CreateNull());
+					var corType = GetType(defaultType);
+					return new EvalArgumentResult(AddValue(defaultType, dnEval.TryCreateNull(corType) ?? dnEval.CreateNull()));
 				}
 			}
 			if (value is DbgDotNetValueImpl dnValueImpl) {
@@ -91,13 +93,14 @@ namespace dnSpy.Debugger.DotNet.CorDebug.Impl.Evaluation {
 					value = rawValue.RawValue;
 					if (value is null) {
 						type = defaultType;
-						return new EvalArgumentResult(dnEval.CreateNull());
+						var corType = GetType(defaultType);
+						return new EvalArgumentResult(AddValue(defaultType, dnEval.TryCreateNull(corType) ?? dnEval.CreateNull()));
 					}
 				}
 				origType = dnValue.Type;
 			}
 			if (value is string s) {
-				type = reflectionAppDomain.System_String;
+				type = origType ?? reflectionAppDomain.System_String;
 				var res = dnEval.CreateString(s, out var hr);
 				if (res?.ResultOrException is CorValue corValue)
 					return new EvalArgumentResult(AddValue(reflectionAppDomain.System_String, corValue));

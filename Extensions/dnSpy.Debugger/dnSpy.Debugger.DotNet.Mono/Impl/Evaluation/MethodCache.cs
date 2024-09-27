@@ -76,8 +76,24 @@ namespace dnSpy.Debugger.DotNet.Mono.Impl.Evaluation {
 			if (toMonoMethod.TryGetValue(method, out var monoMethod))
 				return monoMethod;
 
+			bool isConstructedDeclaringType = false;
+			if (method.ReflectedType is not null)
+				isConstructedDeclaringType |= method.ReflectedType.IsConstructedGenericType;
+			if (method.DeclaringType is not null)
+				isConstructedDeclaringType |= method.DeclaringType.IsConstructedGenericType;
+			if (engine.MonoVirtualMachine.Version.AtLeast(2, 47) && !isConstructedDeclaringType) {
+				var debuggerModule = method.Module.GetDebuggerModule();
+				if (debuggerModule is not null && engine.TryGetMonoModule(debuggerModule, out var monoModule) && !monoModule.Assembly.IsDynamic) {
+					monoMethod = monoModule.Assembly.GetMethod((uint)method.MetadataToken);
+					if (monoMethod is not null) {
+						toMonoMethod[method] = monoMethod;
+						return monoMethod;
+					}
+				}
+			}
+
 			var monoType = MonoDebugTypeCreator.GetType(engine, method.ReflectedType!, monoTypeLoader);
-			DmdType? methodDeclType = method.ReflectedType!;
+			var methodDeclType = method.ReflectedType!;
 			while (methodDeclType != method.DeclaringType) {
 				methodDeclType = methodDeclType!.BaseType ?? throw new InvalidOperationException();
 				monoType = monoType.BaseType ?? MonoDebugTypeCreator.GetType(engine, method.AppDomain.System_Object, monoTypeLoader);

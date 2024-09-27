@@ -149,6 +149,17 @@ namespace dnSpy.Documents.Tabs.Dialogs {
 		}
 		bool decompileXaml;
 
+		public bool UseSDKStyleProjectFormat {
+			get => useSDKStyleProjectFormat;
+			set {
+				if (useSDKStyleProjectFormat != value) {
+					useSDKStyleProjectFormat = value;
+					OnPropertyChanged(nameof(UseSDKStyleProjectFormat));
+				}
+			}
+		}
+		bool useSDKStyleProjectFormat;
+
 		public bool OpenProject {
 			get => openProject;
 			set {
@@ -163,7 +174,7 @@ namespace dnSpy.Documents.Tabs.Dialogs {
 		public bool CanDecompileBaml => UnpackResources && canDecompileBaml;
 		readonly bool canDecompileBaml;
 
-		public bool CanCreateResX => UnpackResources && TheState == State.Editing && false;// See ProjectModuleOptions.CreateResX
+		public bool CanCreateResX => UnpackResources && TheState == State.Editing;
 
 		public string? FilesToExportMessage {
 			get => filesToExportMessage;

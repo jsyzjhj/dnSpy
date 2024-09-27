@@ -90,6 +90,11 @@ namespace dnSpy.Debugger.UI {
 		static readonly ContentTypeDefinition? AutosWindow;
 
 		[Export]
+		[Name(ContentTypes.StaticFieldsWindow)]
+		[BaseDefinition(ContentTypes.VariablesWindow)]
+		static readonly ContentTypeDefinition? StaticFieldsWindow;
+
+		[Export]
 		[Name(ContentTypes.WatchWindow)]
 		[BaseDefinition(ContentTypes.VariablesWindow)]
 		static readonly ContentTypeDefinition? WatchWindow;
@@ -113,6 +118,16 @@ namespace dnSpy.Debugger.UI {
 		[Name(ContentTypes.ThreadsWindowName)]
 		[BaseDefinition(ContentTypes.Text)]
 		static readonly ContentTypeDefinition? ThreadsWindowName;
+
+		[Export]
+		[Name(ContentTypes.EnvironmentVariableKey)]
+		[BaseDefinition(ContentTypes.Text)]
+		static readonly ContentTypeDefinition? EnvironmentVariableKey;
+
+		[Export]
+		[Name(ContentTypes.EnvironmentVariableValue)]
+		[BaseDefinition(ContentTypes.Text)]
+		static readonly ContentTypeDefinition? EnvironmentVariableValue;
 #pragma warning restore CS0169
 	}
 }
